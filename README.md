@@ -46,16 +46,36 @@ This is a compiled mobile app, not a webpage — there's no way to "just open a 
 - **A foreground service** (the persistent notification) tells Android "don't kill this" — this is the mechanism, not a workaround; it's how every legitimate Android background-location app works (delivery trackers, fitness apps, etc.).
 - Location updates get written straight to Firebase via a plain `fetch()` call inside the background task — no UI needs to be rendered for this to happen.
 
+## Publishing an update (so the update-notification system works)
+
+The app checks GitHub Releases on every launch to see if a newer version exists. For that check to find anything, **every new build needs a matching GitHub Release**:
+
+1. Bump `"version"` in `app.json` (e.g. `1.0.0` → `1.0.1`).
+2. Commit and push that change.
+3. Build the new APK: `eas build --platform android --profile preview`.
+4. On GitHub, go to the repo → **Releases** → **Draft a new release**.
+5. Set the tag to match, with a `v` prefix: `v1.0.1`.
+6. Attach the built `.apk` file (drag it into the release's asset area).
+7. Publish the release.
+
+Once that's live, anyone with an older version installed will see an in-app banner and get a local notification ("Phone Tracker update available") the next time they open the app, with a tap-to-download link straight to that release's `.apk`.
+
+If you skip this and just rebuild without creating a release, the app has no way to know a newer version exists — the check is entirely based on the published GitHub Release, not on when you last ran `eas build`.
+
 ## What this still can't do
 
 - **A fully powered-off phone** still can't report anything — no software fix exists for that (see the main Phone-Tracker README).
 - If the person **manually force-stops the app** from Android's app settings, or denies "Allow all the time" location access, tracking stops — same as it would for any tracking app.
 - Very aggressive battery-optimization settings on some phones (Samsung, Xiaomi, Huawei in particular) can still kill background services despite the foreground notification. If tracking seems to stop overnight, check the phone's battery optimization settings and exclude this app from any "sleeping apps" / "deep sleep" list.
+- The update check needs network access and GitHub's API to be reachable — if the phone is offline when it opens, it just silently skips the check and tries again next launch.
 
 ## Files
 
-- `App.js` — the UI: Device ID input, Start/Stop Sharing.
+- `App.js` — the UI: a two-tab menu (**Share My Location** / **Find My Phone**), Device ID input, Start/Stop Sharing, the update banner, and auto-resume-after-reboot logic.
 - `locationTask.js` — the background task definition that writes to Firebase. This is what keeps running after the app closes.
+- `updateChecker.js` — compares the installed version against the latest GitHub Release and returns download info if a newer one exists.
 - `firebaseConfig.js` — the shared Firebase project URL and Device ID sanitization (kept identical to the web repo's rules).
-- `app.json` — Android permissions and the `expo-location` background-mode plugin config.
+- `android-native/BootReceiver.kt` / `plugins/withBootReceiver.js` — native boot receiver + config plugin that posts a "tap to resume" notification after the phone restarts.
+- `assets/` — app icon, Android adaptive icon, splash screen icon, and notification icon.
+- `app.json` — Android permissions, icon/splash config, and plugin config for `expo-location`, `expo-notifications`, and the boot receiver.
 - `eas.json` — build profile producing a directly-installable `.apk` (no Play Store needed).
