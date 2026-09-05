@@ -7,16 +7,52 @@ import {
   Pressable,
   StyleSheet,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as Location from "expo-location";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { WebView } from "react-native-webview";
 import { LOCATION_TASK_NAME } from "./locationTask";
 import { sanitizeDeviceId, MIN_ID_LENGTH } from "./firebaseConfig";
 
 const DEVICE_ID_STORAGE_KEY = "tracker_device_id";
+const VIEWER_URL = "https://munga068-ctrl.github.io/Phone-Tracker/";
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState("share");
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar style="light" />
+
+      <View style={styles.tabBar}>
+        <Pressable
+          style={[styles.tabButton, activeTab === "share" && styles.tabButtonActive]}
+          onPress={() => setActiveTab("share")}
+        >
+          <Text style={[styles.tabText, activeTab === "share" && styles.tabTextActive]}>
+            Share My Location
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.tabButton, activeTab === "find" && styles.tabButtonActive]}
+          onPress={() => setActiveTab("find")}
+        >
+          <Text style={[styles.tabText, activeTab === "find" && styles.tabTextActive]}>
+            Find My Phone
+          </Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.content}>
+        {activeTab === "share" ? <ShareScreen /> : <FindPhoneScreen />}
+      </View>
+    </SafeAreaView>
+  );
+}
+
+function ShareScreen() {
   const [deviceId, setDeviceId] = useState("");
   const [isSharing, setIsSharing] = useState(false);
   const [status, setStatus] = useState("Not sharing.");
@@ -40,7 +76,7 @@ export default function App() {
       if (!silent) {
         Alert.alert("Permission needed", "Location permission is required to share your position.");
       } else {
-        setStatus("Couldn't resume automatically — open the app and tap Start Sharing.");
+        setStatus("Couldn't resume automatically — tap Start Sharing.");
       }
       return;
     }
@@ -52,7 +88,7 @@ export default function App() {
           'For this to keep working with the app closed, choose "Allow all the time" when prompted for location access.'
         );
       } else {
-        setStatus("Couldn't resume automatically — open the app and tap Start Sharing.");
+        setStatus("Couldn't resume automatically — tap Start Sharing.");
       }
       return;
     }
@@ -110,8 +146,7 @@ export default function App() {
   }, []);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar style="auto" />
+    <View style={styles.shareScreen}>
       <Text style={styles.title}>Phone Tracker</Text>
       <Text style={styles.subtitle}>
         Same Device ID as the web viewer — this app keeps reporting location
@@ -122,6 +157,7 @@ export default function App() {
       <TextInput
         style={styles.input}
         placeholder="Device ID / PIN (6+ characters)"
+        placeholderTextColor="#6b7280"
         value={deviceId}
         onChangeText={setDeviceId}
         editable={!isSharing}
@@ -140,7 +176,32 @@ export default function App() {
       )}
 
       <Text style={styles.status}>{status}</Text>
-    </SafeAreaView>
+    </View>
+  );
+}
+
+function FindPhoneScreen() {
+  const [loading, setLoading] = useState(true);
+
+  return (
+    <View style={styles.findScreen}>
+      <WebView
+        source={{ uri: VIEWER_URL }}
+        style={styles.webview}
+        onLoadEnd={() => setLoading(false)}
+        // The viewer page uses browser geolocation for the "Directions"
+        // feature — this grants that permission through to the WebView.
+        geolocationEnabled
+        javaScriptEnabled
+        domStorageEnabled
+      />
+      {loading && (
+        <View style={styles.webviewLoading}>
+          <ActivityIndicator size="large" color="#185FA5" />
+          <Text style={styles.webviewLoadingText}>Loading map…</Text>
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -148,8 +209,59 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#0f1115",
+  },
+  tabBar: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: "#2a2f38",
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 14,
+    alignItems: "center",
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
+  },
+  tabButtonActive: {
+    borderBottomColor: "#185FA5",
+  },
+  tabText: {
+    color: "#9aa1ac",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  tabTextActive: {
+    color: "#e7e9ee",
+  },
+  content: {
+    flex: 1,
+  },
+  shareScreen: {
+    flex: 1,
     padding: 24,
     justifyContent: "center",
+  },
+  findScreen: {
+    flex: 1,
+  },
+  webview: {
+    flex: 1,
+    backgroundColor: "#0f1115",
+  },
+  webviewLoading: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#0f1115",
+  },
+  webviewLoadingText: {
+    marginTop: 12,
+    color: "#9aa1ac",
+    fontSize: 13,
   },
   title: {
     fontSize: 24,
