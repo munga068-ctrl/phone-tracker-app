@@ -5,6 +5,10 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
+    "splash": {
+      "backgroundColor": "#0f1115",
+      "resizeMode": "contain"
+    },
     "android": {
       "package": "com.munga068.phonetracker",
       "permissions": [
