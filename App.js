@@ -21,25 +21,15 @@ export default function App() {
   const [isSharing, setIsSharing] = useState(false);
   const [status, setStatus] = useState("Not sharing.");
 
-  useEffect(() => {
-    (async () => {
-      const savedId = await AsyncStorage.getItem(DEVICE_ID_STORAGE_KEY);
-      if (savedId) setDeviceId(savedId);
-      const alreadyRunning = await Location.hasStartedLocationUpdatesAsync(
-        LOCATION_TASK_NAME
-      );
-      setIsSharing(alreadyRunning);
-      if (alreadyRunning) setStatus("Sharing location in the background.");
-    })();
-  }, []);
-
-  const startSharing = useCallback(async () => {
-    const cleanId = sanitizeDeviceId(deviceId);
+  const beginSharing = useCallback(async (rawId, { silent = false } = {}) => {
+    const cleanId = sanitizeDeviceId(rawId);
     if (cleanId.length < MIN_ID_LENGTH) {
-      Alert.alert(
-        "Device ID too short",
-        `Enter at least ${MIN_ID_LENGTH} characters (letters, numbers, "-", "_").`
-      );
+      if (!silent) {
+        Alert.alert(
+          "Device ID too short",
+          `Enter at least ${MIN_ID_LENGTH} characters (letters, numbers, "-", "_").`
+        );
+      }
       return;
     }
     setDeviceId(cleanId);
@@ -47,15 +37,23 @@ export default function App() {
 
     const fg = await Location.requestForegroundPermissionsAsync();
     if (fg.status !== "granted") {
-      Alert.alert("Permission needed", "Location permission is required to share your position.");
+      if (!silent) {
+        Alert.alert("Permission needed", "Location permission is required to share your position.");
+      } else {
+        setStatus("Couldn't resume automatically — open the app and tap Start Sharing.");
+      }
       return;
     }
     const bg = await Location.requestBackgroundPermissionsAsync();
     if (bg.status !== "granted") {
-      Alert.alert(
-        "Background permission needed",
-        'For this to keep working with the app closed, choose "Allow all the time" when prompted for location access.'
-      );
+      if (!silent) {
+        Alert.alert(
+          "Background permission needed",
+          'For this to keep working with the app closed, choose "Allow all the time" when prompted for location access.'
+        );
+      } else {
+        setStatus("Couldn't resume automatically — open the app and tap Start Sharing.");
+      }
       return;
     }
 
@@ -72,7 +70,35 @@ export default function App() {
 
     setIsSharing(true);
     setStatus("Sharing location — this keeps running even if you close the app.");
-  }, [deviceId]);
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const savedId = await AsyncStorage.getItem(DEVICE_ID_STORAGE_KEY);
+      if (savedId) setDeviceId(savedId);
+
+      const alreadyRunning = await Location.hasStartedLocationUpdatesAsync(
+        LOCATION_TASK_NAME
+      );
+      setIsSharing(alreadyRunning);
+
+      if (alreadyRunning) {
+        setStatus("Sharing location in the background.");
+      } else if (savedId) {
+        // A saved ID but no running task means either this is the first
+        // open after a reboot (the OS kills the foreground service on
+        // restart, nothing auto-restarts it) or the task was otherwise
+        // killed. Since permission grants persist across reboots, we can
+        // safely resume without asking the user to do anything — this is
+        // what makes the "tap to resume" boot notification effectively
+        // one tap instead of a full manual reconfiguration.
+        setStatus("Resuming sharing after restart…");
+        await beginSharing(savedId, { silent: true });
+      }
+    })();
+  }, [beginSharing]);
+
+  const startSharing = useCallback(() => beginSharing(deviceId), [beginSharing, deviceId]);
 
   const stopSharing = useCallback(async () => {
     const running = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME);
@@ -88,8 +114,9 @@ export default function App() {
       <StatusBar style="auto" />
       <Text style={styles.title}>Phone Tracker</Text>
       <Text style={styles.subtitle}>
-        Same Device ID as the web viewer — this app just keeps reporting
-        location even when it's closed or the screen is off.
+        Same Device ID as the web viewer — this app keeps reporting location
+        even when it's closed, the screen is off, or the phone restarts
+        (you'll get a notification to tap after a reboot).
       </Text>
 
       <TextInput
