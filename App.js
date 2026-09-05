@@ -8,23 +8,80 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Linking,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as Location from "expo-location";
+import * as Notifications from "expo-notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { WebView } from "react-native-webview";
 import { LOCATION_TASK_NAME } from "./locationTask";
 import { sanitizeDeviceId, MIN_ID_LENGTH } from "./firebaseConfig";
+import { checkForUpdate } from "./updateChecker";
 
 const DEVICE_ID_STORAGE_KEY = "tracker_device_id";
 const VIEWER_URL = "https://munga068-ctrl.github.io/Phone-Tracker/";
 
+// Show the update notification even if the app happens to be open in the
+// foreground when the check completes.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
+
 export default function App() {
   const [activeTab, setActiveTab] = useState("share");
+  const [updateInfo, setUpdateInfo] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const update = await checkForUpdate();
+      if (!update) return;
+      setUpdateInfo(update);
+
+      // Local notification is best-effort — if permission isn't granted the
+      // in-app banner below still tells them, so this failing silently is fine.
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status === "granted") {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: "Phone Tracker update available",
+              body: `Version ${update.latestVersion} is ready — tap to download.`,
+              data: { url: update.downloadUrl },
+            },
+            trigger: null, // fire immediately
+          });
+        }
+      } catch (e) {
+        // Notifications not available/denied — banner below still covers it.
+      }
+    })();
+
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const url = response.notification.request.content.data?.url;
+      if (url) Linking.openURL(url);
+    });
+    return () => sub.remove();
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
+
+      {updateInfo && (
+        <Pressable
+          style={styles.updateBanner}
+          onPress={() => Linking.openURL(updateInfo.downloadUrl)}
+        >
+          <Text style={styles.updateBannerText}>
+            Update {updateInfo.latestVersion} available — tap to download
+          </Text>
+        </Pressable>
+      )}
 
       <View style={styles.tabBar}>
         <Pressable
@@ -209,6 +266,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#0f1115",
+  },
+  updateBanner: {
+    backgroundColor: "#185FA5",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  updateBannerText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+    textAlign: "center",
   },
   tabBar: {
     flexDirection: "row",
