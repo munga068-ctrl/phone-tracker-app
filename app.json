@@ -37,6 +37,13 @@
           "isAndroidForegroundServiceEnabled": true
         }
       ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#185FA5"
+        }
+      ],
       "./plugins/withBootReceiver.js"
     ]
   }
