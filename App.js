@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo, useContext } from "react";
 import {
   SafeAreaView,
   View,
@@ -9,6 +9,8 @@ import {
   Alert,
   ActivityIndicator,
   Linking,
+  StatusBar as RNStatusBar,
+  Platform,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as Location from "expo-location";
@@ -18,6 +20,7 @@ import { WebView } from "react-native-webview";
 import { LOCATION_TASK_NAME } from "./locationTask";
 import { sanitizeDeviceId, MIN_ID_LENGTH } from "./firebaseConfig";
 import { checkForUpdate } from "./updateChecker";
+import { ThemeContext, DARK_THEME, LIGHT_THEME, THEME_STORAGE_KEY } from "./theme";
 
 const DEVICE_ID_STORAGE_KEY = "tracker_device_id";
 const VIEWER_URL = "https://munga068-ctrl.github.io/Phone-Tracker/";
@@ -35,6 +38,22 @@ Notifications.setNotificationHandler({
 export default function App() {
   const [activeTab, setActiveTab] = useState("share");
   const [updateInfo, setUpdateInfo] = useState(null);
+  const [themeName, setThemeNameState] = useState("dark");
+
+  const theme = themeName === "light" ? LIGHT_THEME : DARK_THEME;
+  const styles = useMemo(() => getStyles(theme), [theme]);
+
+  useEffect(() => {
+    (async () => {
+      const saved = await AsyncStorage.getItem(THEME_STORAGE_KEY);
+      if (saved === "light" || saved === "dark") setThemeNameState(saved);
+    })();
+  }, []);
+
+  const setThemeName = useCallback(async (name) => {
+    setThemeNameState(name);
+    await AsyncStorage.setItem(THEME_STORAGE_KEY, name);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -69,47 +88,62 @@ export default function App() {
   }, []);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar style="light" />
+    <ThemeContext.Provider value={{ theme, themeName, setThemeName }}>
+      <SafeAreaView style={styles.container}>
+        <StatusBar style={theme.statusBarStyle} />
 
-      {updateInfo && (
-        <Pressable
-          style={styles.updateBanner}
-          onPress={() => Linking.openURL(updateInfo.downloadUrl)}
-        >
-          <Text style={styles.updateBannerText}>
-            Update {updateInfo.latestVersion} available — tap to download
-          </Text>
-        </Pressable>
-      )}
+        {updateInfo && (
+          <Pressable
+            style={styles.updateBanner}
+            onPress={() => Linking.openURL(updateInfo.downloadUrl)}
+          >
+            <Text style={styles.updateBannerText}>
+              Update {updateInfo.latestVersion} available — tap to download
+            </Text>
+          </Pressable>
+        )}
 
-      <View style={styles.tabBar}>
-        <Pressable
-          style={[styles.tabButton, activeTab === "share" && styles.tabButtonActive]}
-          onPress={() => setActiveTab("share")}
-        >
-          <Text style={[styles.tabText, activeTab === "share" && styles.tabTextActive]}>
-            Share My Location
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[styles.tabButton, activeTab === "find" && styles.tabButtonActive]}
-          onPress={() => setActiveTab("find")}
-        >
-          <Text style={[styles.tabText, activeTab === "find" && styles.tabTextActive]}>
-            Find My Phone
-          </Text>
-        </Pressable>
-      </View>
+        <View style={styles.tabBar}>
+          <Pressable
+            style={[styles.tabButton, activeTab === "share" && styles.tabButtonActive]}
+            onPress={() => setActiveTab("share")}
+          >
+            <Text style={[styles.tabText, activeTab === "share" && styles.tabTextActive]}>
+              Share My Location
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.tabButton, activeTab === "find" && styles.tabButtonActive]}
+            onPress={() => setActiveTab("find")}
+          >
+            <Text style={[styles.tabText, activeTab === "find" && styles.tabTextActive]}>
+              Find My Phone
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.tabButton, activeTab === "settings" && styles.tabButtonActive]}
+            onPress={() => setActiveTab("settings")}
+          >
+            <Text style={[styles.tabText, activeTab === "settings" && styles.tabTextActive]}>
+              Settings
+            </Text>
+          </Pressable>
+        </View>
 
-      <View style={styles.content}>
-        {activeTab === "share" ? <ShareScreen /> : <FindPhoneScreen />}
-      </View>
-    </SafeAreaView>
+        <View style={styles.content}>
+          {activeTab === "share" && <ShareScreen />}
+          {activeTab === "find" && <FindPhoneScreen />}
+          {activeTab === "settings" && <SettingsScreen />}
+        </View>
+      </SafeAreaView>
+    </ThemeContext.Provider>
   );
 }
 
 function ShareScreen() {
+  const { theme } = useContext(ThemeContext);
+  const styles = useMemo(() => getStyles(theme), [theme]);
+
   const [deviceId, setDeviceId] = useState("");
   const [isSharing, setIsSharing] = useState(false);
   const [status, setStatus] = useState("Not sharing.");
@@ -214,7 +248,7 @@ function ShareScreen() {
       <TextInput
         style={styles.input}
         placeholder="Device ID / PIN (6+ characters)"
-        placeholderTextColor="#6b7280"
+        placeholderTextColor={theme.placeholder}
         value={deviceId}
         onChangeText={setDeviceId}
         editable={!isSharing}
@@ -238,6 +272,8 @@ function ShareScreen() {
 }
 
 function FindPhoneScreen() {
+  const { theme } = useContext(ThemeContext);
+  const styles = useMemo(() => getStyles(theme), [theme]);
   const [loading, setLoading] = useState(true);
 
   return (
@@ -254,7 +290,7 @@ function FindPhoneScreen() {
       />
       {loading && (
         <View style={styles.webviewLoading}>
-          <ActivityIndicator size="large" color="#185FA5" />
+          <ActivityIndicator size="large" color={theme.accent} />
           <Text style={styles.webviewLoadingText}>Loading map…</Text>
         </View>
       )}
@@ -262,117 +298,187 @@ function FindPhoneScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#0f1115",
-  },
-  updateBanner: {
-    backgroundColor: "#185FA5",
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-  },
-  updateBannerText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  tabBar: {
-    flexDirection: "row",
-    borderBottomWidth: 1,
-    borderBottomColor: "#2a2f38",
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 14,
-    alignItems: "center",
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
-  },
-  tabButtonActive: {
-    borderBottomColor: "#185FA5",
-  },
-  tabText: {
-    color: "#9aa1ac",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  tabTextActive: {
-    color: "#e7e9ee",
-  },
-  content: {
-    flex: 1,
-  },
-  shareScreen: {
-    flex: 1,
-    padding: 24,
-    justifyContent: "center",
-  },
-  findScreen: {
-    flex: 1,
-  },
-  webview: {
-    flex: 1,
-    backgroundColor: "#0f1115",
-  },
-  webviewLoading: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#0f1115",
-  },
-  webviewLoadingText: {
-    marginTop: 12,
-    color: "#9aa1ac",
-    fontSize: 13,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#e7e9ee",
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 13,
-    color: "#9aa1ac",
-    marginBottom: 24,
-    lineHeight: 18,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#2a2f38",
-    borderRadius: 8,
-    padding: 14,
-    fontSize: 16,
-    color: "#e7e9ee",
-    backgroundColor: "#171a1f",
-    marginBottom: 16,
-  },
-  button: {
-    borderRadius: 8,
-    padding: 16,
-    alignItems: "center",
-  },
-  startButton: {
-    backgroundColor: "#185FA5",
-  },
-  stopButton: {
-    backgroundColor: "#A32D2D",
-  },
-  buttonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  status: {
-    marginTop: 20,
-    fontSize: 13,
-    color: "#9aa1ac",
-    textAlign: "center",
-  },
-});
+function SettingsScreen() {
+  const { theme, themeName, setThemeName } = useContext(ThemeContext);
+  const styles = useMemo(() => getStyles(theme), [theme]);
+
+  return (
+    <View style={styles.settingsScreen}>
+      <Text style={styles.title}>Settings</Text>
+      <Text style={styles.subtitle}>Choose how Phone Tracker looks on this device.</Text>
+
+      <View style={styles.themeRow}>
+        <Pressable
+          style={[styles.themeOption, themeName === "dark" && styles.themeOptionActive]}
+          onPress={() => setThemeName("dark")}
+        >
+          <Text style={[styles.themeOptionText, themeName === "dark" && styles.themeOptionTextActive]}>
+            🌙 Night Mode
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.themeOption, themeName === "light" && styles.themeOptionActive]}
+          onPress={() => setThemeName("light")}
+        >
+          <Text style={[styles.themeOptionText, themeName === "light" && styles.themeOptionTextActive]}>
+            ☀️ Light Mode
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+// Regenerated per theme rather than a single static StyleSheet, since
+// colors need to swap between the dark and light palettes at runtime.
+function getStyles(theme) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.bg,
+      // React Native's core SafeAreaView only accounts for safe-area insets
+      // on iOS — on Android it does nothing, which is why the tab bar was
+      // sitting flush against the very top of the screen. This adds the
+      // actual status bar height back in on Android.
+      paddingTop: Platform.OS === "android" ? RNStatusBar.currentHeight || 24 : 0,
+    },
+    updateBanner: {
+      backgroundColor: theme.accent,
+      paddingVertical: 10,
+      paddingHorizontal: 16,
+    },
+    updateBannerText: {
+      color: "#fff",
+      fontSize: 13,
+      fontWeight: "600",
+      textAlign: "center",
+    },
+    tabBar: {
+      flexDirection: "row",
+      borderBottomWidth: 1,
+      borderBottomColor: theme.border,
+      paddingTop: 6,
+    },
+    tabButton: {
+      flex: 1,
+      paddingVertical: 14,
+      alignItems: "center",
+      borderBottomWidth: 2,
+      borderBottomColor: "transparent",
+    },
+    tabButtonActive: {
+      borderBottomColor: theme.accent,
+    },
+    tabText: {
+      color: theme.muted,
+      fontSize: 13,
+      fontWeight: "600",
+    },
+    tabTextActive: {
+      color: theme.ink,
+    },
+    content: {
+      flex: 1,
+    },
+    shareScreen: {
+      flex: 1,
+      padding: 24,
+      justifyContent: "center",
+    },
+    settingsScreen: {
+      flex: 1,
+      padding: 24,
+    },
+    findScreen: {
+      flex: 1,
+    },
+    webview: {
+      flex: 1,
+      backgroundColor: theme.bg,
+    },
+    webviewLoading: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: theme.bg,
+    },
+    webviewLoadingText: {
+      marginTop: 12,
+      color: theme.muted,
+      fontSize: 13,
+    },
+    title: {
+      fontSize: 24,
+      fontWeight: "700",
+      color: theme.ink,
+      marginBottom: 8,
+    },
+    subtitle: {
+      fontSize: 13,
+      color: theme.muted,
+      marginBottom: 24,
+      lineHeight: 18,
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 8,
+      padding: 14,
+      fontSize: 16,
+      color: theme.ink,
+      backgroundColor: theme.panel,
+      marginBottom: 16,
+    },
+    button: {
+      borderRadius: 8,
+      padding: 16,
+      alignItems: "center",
+    },
+    startButton: {
+      backgroundColor: theme.accent,
+    },
+    stopButton: {
+      backgroundColor: theme.danger,
+    },
+    buttonText: {
+      color: "#fff",
+      fontSize: 16,
+      fontWeight: "600",
+    },
+    status: {
+      marginTop: 20,
+      fontSize: 13,
+      color: theme.muted,
+      textAlign: "center",
+    },
+    themeRow: {
+      flexDirection: "row",
+      gap: 12,
+    },
+    themeOption: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 10,
+      paddingVertical: 20,
+      alignItems: "center",
+      backgroundColor: theme.panel,
+    },
+    themeOptionActive: {
+      borderColor: theme.accent,
+      borderWidth: 2,
+    },
+    themeOptionText: {
+      color: theme.muted,
+      fontSize: 14,
+      fontWeight: "600",
+    },
+    themeOptionTextActive: {
+      color: theme.ink,
+    },
+  });
+}
